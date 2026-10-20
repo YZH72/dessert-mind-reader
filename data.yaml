@@ -1,0 +1,13 @@
+path: ./datasets/emotion_data  # 資料集的根目錄
+train: train/images            # 訓練集圖片路徑
+val: val/images                # 驗證集圖片路徑
+
+# 情緒類別定義
+names:
+  0: angry
+  1: disgust
+  2: fear
+  3: happy
+  4: neutral
+  5: sad
+  6: surprise

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>甜點讀心術 — AI甜點顧問系統 2.0</title>
+    <!-- Tailwind CSS & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght=300;400;500;700;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sakura: {
+                            50: '#fff5f7',
+                            100: '#ffe3ec',
+                            200: '#fccada',
+                            300: '#f99fb9',
+                            400: '#f46b93',
+                            500: '#ea3e70',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background: #faf6f7;
+            min-height: 100vh;
+        }
+        /* 有機微光氣氛底色 */
+        .ambient-bg {
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(254, 205, 211, 0.45) 0%, transparent 40%),
+                radial-gradient(circle at 80% 15%, rgba(253, 230, 138, 0.35) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(244, 114, 182, 0.15) 0%, transparent 60%);
+        }
+        .dessert-pattern-bg {
+            background-image: radial-gradient(#f43f5e 0.5px, transparent 0.5px);
+            background-size: 32px 32px;
+            opacity: 0.15;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 20px 40px -15px rgba(244, 63, 94, 0.05);
+        }
+        #cameraStream, #photoPreview {
+            transform: scaleX(-1); /* 鏡像效果 */
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased pb-20 relative selection:bg-rose-100 selection:text-rose-600">
+
+    <!-- 全局有機光影點綴背景 -->
+    <div class="fixed inset-0 ambient-bg pointer-events-none z-0"></div>
+    <div class="fixed inset-0 dessert-pattern-bg pointer-events-none z-0"></div>
+
+    <!-- 頂部藝術甜點 Header (甜點自然融入背景，無框線) -->
+    <header class="relative pt-14 pb-10 px-4 text-center overflow-hidden z-10">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-48 bg-gradient-to-r from-rose-200/50 via-pink-100/40 to-amber-100/50 blur-3xl rounded-full pointer-events-none"></div>
+
+        <div class="relative max-w-6xl mx-auto flex items-center justify-between">
+            
+            <!-- 左側融入甜點群 -->
+            <div class="hidden md:flex items-center space-x-6 opacity-90 hover:opacity-100 transition-opacity">
+                <div class="group flex items-center space-x-3 cursor-default">
+                    <span class="text-4xl filter drop-shadow-md group-hover:scale-110 transition-transform duration-300">🍓</span>
+                    <div class="text-left">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="text-xs font-bold text-slate-800 tracking-wide">法式草莓塔</span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-medium tracking-wider">SWEET & SOUR</p>
+                    </div>
+                </div>
+
+                <div class="h-6 w-[1px] bg-gradient-to-b from-transparent via-rose-200 to-transparent hidden lg:block"></div>
+
+                <div class="group hidden lg:flex items-center space-x-2.5 cursor-default">
+                    <span class="text-3xl filter drop-shadow-sm group-hover:scale-110 transition-transform duration-300">🍮</span>
+                    <div class="text-left">
+                        <p class="text-xs font-bold text-slate-700">焦糖可麗露</p>
+                        <p class="text-[9px] text-amber-600/70 font-semibold tracking-wider">CRISPY & CHEWY</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中間核心標題 -->
+            <div class="mx-auto text-center px-4">
+                <div class="inline-flex items-center space-x-2 bg-white/60 backdrop-blur-md px-4 py-1 rounded-full border border-white/80 shadow-2xs mb-3">
+                    <i class="fa-solid fa-wand-magic-sparkles text-xs text-rose-500"></i>
+                    <span class="text-[11px] font-bold text-rose-500/90 tracking-widest uppercase">Affective Computing 顧問系統</span>
+                </div>
+                
+                <h1 class="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight flex items-center justify-center space-x-2">
+                    <span class="bg-gradient-to-r from-slate-900 via-rose-950 to-slate-800 bg-clip-text text-transparent">甜點讀心術</span>
+                    <span class="inline-block hover:rotate-12 transition-transform duration-300 cursor-pointer filter drop-shadow-md">🍰</span>
+                </h1>
+                
+                <p class="mt-3 text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed font-medium tracking-wide">
+                    基於情感分析與用戶偏好的 AI 甜點顧問。捕捉你的即時表情，映射三維情緒空間，提供專屬療癒處方。
+                </p>
+            </div>
+
+            <!-- 右側融入甜點群 -->
+            <div class="hidden md:flex items-center space-x-6 opacity-90 hover:opacity-100 transition-opacity">
+                <div class="group hidden lg:flex items-center space-x-2.5 cursor-default">
+                    <div class="text-right">
+                        <p class="text-xs font-bold text-slate-700">伯爵戚風</p>
+                        <p class="text-[9px] text-pink-500/70 font-semibold tracking-wider">SOFT & FLUFFY</p>
+                    </div>
+                    <span class="text-3xl filter drop-shadow-sm group-hover:scale-110 transition-transform duration-300">🧁</span>
+                </div>
+
+                <div class="h-6 w-[1px] bg-gradient-to-b from-transparent via-rose-200 to-transparent hidden lg:block"></div>
+
+                <div class="group flex items-center space-x-3 cursor-default">
+                    <div class="text-right">
+                        <div class="flex items-center justify-end space-x-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            <span class="text-xs font-bold text-slate-800 tracking-wide">水果聖代</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-medium tracking-wider">COOL & REFRESHING</p>
+                    </div>
+                    <span class="text-4xl filter drop-shadow-md group-hover:scale-110 transition-transform duration-300">🍨</span>
+                </div>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- 主要內容區 (保留完整 DOM 結構與 ID) -->
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
+        
+        <!-- 個人化飲食與偏好面板 -->
+        <div class="glass-panel rounded-3xl p-6 mb-8">
+            <h3 class="text-xs font-bold text-slate-700 mb-4 flex items-center justify-between tracking-wide">
+                <span class="flex items-center"><i class="fa-solid fa-sliders mr-2 text-rose-500"></i> 個人化甜點偏好與避雷設定</span>
+                <span class="text-[10px] text-rose-500 bg-rose-50 px-2.5 py-0.5 rounded-full font-bold">精準權重計算</span>
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <!-- 避開過敏原 -->
+                <div class="bg-white/50 p-3.5 rounded-2xl border border-white/60">
+                    <span class="text-slate-600 block mb-2.5 font-bold">🚫 避開過敏原 / 禁忌成分：</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <label class="cursor-pointer bg-white/80 border border-rose-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-rose-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="allergens" value="nuts" class="rounded text-rose-500 focus:ring-0 accent-rose-500">
+                            <span class="text-slate-700 font-medium">堅果 (nuts)</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-rose-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-rose-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="allergens" value="milk" class="rounded text-rose-500 focus:ring-0 accent-rose-500">
+                            <span class="text-slate-700 font-medium">乳製品 (milk)</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-rose-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-rose-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="allergens" value="egg" class="rounded text-rose-500 focus:ring-0 accent-rose-500">
+                            <span class="text-slate-700 font-medium">雞蛋 (egg)</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-rose-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-rose-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="allergens" value="gluten" class="rounded text-rose-500 focus:ring-0 accent-rose-500">
+                            <span class="text-slate-700 font-medium">麩質 (gluten)</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-rose-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-rose-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="allergens" value="alcohol" class="rounded text-rose-500 focus:ring-0 accent-rose-500">
+                            <span class="text-slate-700 font-medium">酒精 (alcohol)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 優先偏好風味 -->
+                <div class="bg-white/50 p-3.5 rounded-2xl border border-white/60">
+                    <span class="text-slate-600 block mb-2.5 font-bold">✨ 優先偏好風味：</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <label class="cursor-pointer bg-white/80 border border-amber-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-amber-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="preferences" value="chocolate" class="rounded text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-slate-700 font-medium">巧克力</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-amber-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-amber-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="preferences" value="fruity" class="rounded text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-slate-700 font-medium">水果酸甜</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-amber-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-amber-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="preferences" value="tea" class="rounded text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-slate-700 font-medium">茶香系</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-amber-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-amber-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="preferences" value="crunchy" class="rounded text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-slate-700 font-medium">酥脆有咬勁</span>
+                        </label>
+                        <label class="cursor-pointer bg-white/80 border border-amber-100 rounded-xl px-2.5 py-1 flex items-center space-x-1.5 hover:border-amber-300 transition-all shadow-2xs">
+                            <input type="checkbox" name="preferences" value="cinnamon" class="rounded text-amber-500 focus:ring-0 accent-amber-500">
+                            <span class="text-slate-700 font-medium">肉桂香料</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- 左側：輸入頻道 (文字 / 自拍) -->
+            <div class="lg:col-span-7 space-y-6">
+                
+                <!-- 文字傾訴區塊 -->
+                <div class="glass-panel rounded-3xl p-6 transition-all duration-300">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500">
+                                <i class="fa-solid fa-pen-nib text-base"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-800">文字傾訴</h2>
+                                <p class="text-xs text-slate-400">寫下你今天的故事或心情</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold px-3 py-1 rounded-full bg-rose-50 text-rose-500 border border-rose-100">SenticNet 語意分析</span>
+                    </div>
+
+                    <div class="space-y-4">
+                        <textarea id="userInput" rows="3" placeholder="今天專題卡關好焦慮，好想吃點甜的..." 
+                            class="w-full p-4 text-xs bg-white/80 border border-rose-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-transparent transition-all placeholder-slate-400 leading-relaxed shadow-inner text-slate-700"></textarea>
+                        
+                        <button onclick="analyzeTextSentiment()" id="btnTextSubmit"
+                            class="w-full bg-gradient-to-r from-rose-500 via-pink-500 to-rose-400 hover:from-rose-600 hover:to-pink-600 text-white font-bold py-3.5 px-4 rounded-2xl transition duration-200 shadow-md shadow-rose-500/20 flex items-center justify-center space-x-2 active:scale-[0.99] text-xs">
+                            <i class="fa-solid fa-paper-plane"></i>
+                            <span>傳送心聲給顧問</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 自拍與影像辨識區塊 -->
+                <div class="glass-panel rounded-3xl p-6 transition-all duration-300 relative">
+                    <div class="flex items-center justify-between mb-4 relative z-10">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-500">
+                                <i class="fa-solid fa-camera text-base"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-800">自拍讀心術</h2>
+                                <p class="text-xs text-slate-400">即時攝影機自拍，AI 解析你的神情</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100">YOLO 視覺辨識</span>
+                    </div>
+
+                    <div class="relative w-full aspect-video bg-slate-900/90 rounded-2xl overflow-hidden mb-4 shadow-inner border border-white/80 flex items-center justify-center">
+                        <video id="cameraStream" autoplay playsinline class="hidden w-full h-full object-cover"></video>
+                        <canvas id="photoPreview" class="hidden w-full h-full object-contain"></canvas>
+                        
+                        <button id="btnStartCamera" onclick="startCamera()" class="absolute inset-0 m-auto w-32 h-32 text-slate-300 hover:text-white flex flex-col items-center justify-center space-y-2 group transition">
+                            <i class="fa-solid fa-power-off text-5xl group-hover:scale-110 transition text-rose-400"></i>
+                            <span class="text-xs font-bold tracking-wide">開啟攝影機</span>
+                        </button>
+                    </div>
+
+                    <div id="cameraControls" class="hidden flex space-x-3 mb-4">
+                        <button id="btnTakePhoto" onclick="takePhoto()" class="flex-1 bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 rounded-2xl transition flex items-center justify-center space-x-2 text-xs shadow-md">
+                            <i class="fa-solid fa-camera"></i> <span>拍照讀心</span>
+                        </button>
+                        <button id="btnRetakePhoto" onclick="retakePhoto()" class="hidden w-28 bg-white border border-rose-200 text-slate-600 font-bold py-3 rounded-2xl transition hover:bg-rose-50 flex items-center justify-center space-x-2 text-xs">
+                            <i class="fa-solid fa-rotate-left"></i> <span>重拍</span>
+                        </button>
+                    </div>
+
+                    <div class="text-center py-2 border-t border-rose-100/60 mt-2">
+                        <label for="imageFile" class="text-xs text-rose-500 font-bold cursor-pointer hover:text-rose-600 transition flex items-center justify-center space-x-1.5">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <span>或上傳現有照片（JPG/PNG）</span>
+                        </label>
+                        <input type="file" id="imageFile" accept="image/*" class="hidden" onchange="previewUploadedImage(this)">
+                    </div>
+
+                    <button onclick="analyzeImageEmotion()" id="btnImageSubmit" disabled
+                        class="w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-400 text-white font-bold py-3.5 px-4 rounded-2xl transition duration-200 shadow-md shadow-amber-500/10 flex items-center justify-center space-x-2 active:scale-[0.99] text-xs disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-eye"></i>
+                        <span>啟動影像 AI 推薦</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右側：AI 分析與推薦報告 -->
+            <div class="lg:col-span-5">
+                <div class="glass-panel rounded-3xl p-6 sticky top-8 min-h-[520px] flex flex-col justify-between shadow-xl shadow-rose-500/5">
+                    <div>
+                        <div class="flex items-center space-x-3 pb-4 mb-4 border-b border-rose-100/80">
+                            <div class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></div>
+                            <h2 class="text-xs font-black tracking-wider text-slate-800 uppercase">AI 甜點顧問分析報告</h2>
+                        </div>
+
+                        <!-- 初始靜態占位符 -->
+                        <div id="placeholderStatus" class="flex flex-col items-center justify-center text-slate-400 py-20 space-y-3">
+                            <i class="fa-solid fa-mortar-pestle text-5xl text-rose-300 animate-bounce"></i>
+                            <p class="text-xs font-bold">等待諮商或自拍拍照中...</p>
+                            <p class="text-[11px] text-slate-400">請在左側選擇一個渠道開始療癒大閉環</p>
+                        </div>
+
+                        <!-- 報告內容呈現區區塊 -->
+                        <div id="reportContent" class="hidden space-y-5">
+                            <div class="bg-white/60 border border-white rounded-2xl p-3.5 space-y-2">
+                                <h3 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center">
+                                    <i class="fa-solid fa-chart-simple mr-1.5 text-rose-500"></i> 多維情感映射指標
+                                </h3>
+                                
+                                <div class="flex flex-wrap gap-2 pt-1">
+                                    <div class="bg-rose-500 text-white rounded-full px-3 py-1 flex items-center space-x-1.5 text-xs font-bold shadow-xs">
+                                        <span>核心狀態:</span>
+                                        <span id="lblEmotion" class="capitalize">-</span>
+                                    </div>
+
+                                    <div id="coordBadge" class="hidden bg-rose-50 text-rose-600 border border-rose-200 font-mono rounded-full px-3 py-1 flex items-center space-x-1.5 text-[10px] font-bold">
+                                        <span>3D 座標:</span>
+                                        <span id="lblCoordinates">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- AI 諮商師對話與說明 -->
+                            <div class="bg-gradient-to-br from-white/90 to-rose-50/60 border border-white/80 rounded-2xl p-4 text-slate-700 leading-relaxed text-xs italic shadow-2xs whitespace-pre-wrap max-h-[220px] overflow-y-auto">
+                                <div id="txtDialogue"></div>
+                            </div>
+
+                            <!-- 推薦甜點列表 -->
+                            <div class="pt-2">
+                                <h4 class="text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-2.5 flex items-center">
+                                    <i class="fa-solid fa-cake-candles mr-1.5 text-rose-500"></i> 空間幾何最佳解：前三名療癒處方
+                                </h4>
+                                <div id="dessertContainer" class="space-y-2">
+                                    <p class="text-xs text-slate-400 italic px-1">等待 AI 顧問運算甜點矩陣...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-rose-100/60 text-[10px] text-slate-400 text-center font-medium tracking-wider">
+                        Based on SenticNet 7 & Hourglass 3D Euclidean Vector Logic
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- JavaScript 完整邏輯 (保持 100% 原始 API 連線邏輯) -->
+    <script>
+        const cameraStream = document.getElementById('cameraStream');
+        const photoPreview = document.getElementById('photoPreview');
+        const cameraControls = document.getElementById('cameraControls');
+        const btnTakePhoto = document.getElementById('btnTakePhoto');
+        const btnRetakePhoto = document.getElementById('btnRetakePhoto');
+        const btnStartCamera = document.getElementById('btnStartCamera');
+        const btnImageSubmit = document.getElementById('btnImageSubmit');
+        let currentPhotoBlob = null;
+        let mediaStreamTrack = null;
+
+        // 停止相機串流的輔助函式
+        function stopCameraStream() {
+            if (cameraStream.srcObject) {
+                cameraStream.srcObject.getTracks().forEach(track => track.stop());
+                cameraStream.srcObject = null;
+            }
+        }
+
+        // 開啟攝影機
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { aspect_ratio: 4/3, facingMode: "user" }, 
+                    audio: false 
+                });
+                cameraStream.srcObject = stream;
+                btnStartCamera.classList.add('hidden');
+                cameraStream.classList.remove('hidden');
+                photoPreview.classList.add('hidden');
+                cameraControls.classList.remove('hidden');
+                btnRetakePhoto.classList.add('hidden');
+                btnTakePhoto.classList.remove('hidden');
+                btnImageSubmit.disabled = true;
+                currentPhotoBlob = null;
+            } catch (e) { 
+                alert("無法開啟攝影機，請確認設備連結或權限設定。"); 
+            }
+        }
+
+        // 📸 拍照
+        function takePhoto() {
+            const canvas = document.getElementById('photoPreview');
+            const context = canvas.getContext('2d');
+            canvas.width = cameraStream.videoWidth;
+            canvas.height = cameraStream.videoHeight;
+            context.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
+            
+            cameraStream.classList.add('hidden');
+            photoPreview.classList.remove('hidden');
+            btnTakePhoto.classList.add('hidden');
+            btnRetakePhoto.classList.remove('hidden');
+            
+            canvas.toBlob((blob) => {
+                currentPhotoBlob = blob;
+                btnImageSubmit.disabled = false;
+            }, 'image/jpeg');
+
+            // 拍照完成後關閉攝影機串流省電
+            stopCameraStream();
+        }
+
+        // 📸 重拍
+        function retakePhoto() {
+            startCamera();
+            document.getElementById('imageFile').value = '';
+        }
+
+        // 預覽上傳的照片
+        function previewUploadedImage(input) {
+            if (input.files && input.files[0]) {
+                stopCameraStream();
+                btnStartCamera.classList.add('hidden');
+                cameraStream.classList.add('hidden');
+                cameraControls.classList.add('hidden');
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.getElementById('photoPreview');
+                        const context = canvas.getContext('2d');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        context.drawImage(img, 0, 0);
+                        canvas.classList.remove('hidden');
+                        btnImageSubmit.disabled = false;
+                    }
+                    img.src = e.target.result;
+                }
+                reader.readAsDataURL(input.files[0]);
+                currentPhotoBlob = null; 
+            }
+        }
+
+        // 取得使用者勾選的偏好與過敏原設定
+        function getUserDietarySettings() {
+            const allergens = Array.from(document.querySelectorAll('input[name="allergens"]:checked')).map(cb => cb.value);
+            const preferences = Array.from(document.querySelectorAll('input[name="preferences"]:checked')).map(cb => cb.value);
+            return { allergens, preferences };
+        }
+
+        // 渠道一：純文字分析
+        async function analyzeTextSentiment() {
+            const userText = document.getElementById('userInput').value.trim();
+            if (!userText) return alert("請先寫下你的內心話。");
+
+            const btn = document.getElementById('btnTextSubmit');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 文字分析中...`;
+
+            const { allergens, preferences } = getUserDietarySettings();
+
+            try {
+                const response = await fetch('/api/analyze-sentiment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        user_text: userText, 
+                        username: "甜點愛好者", 
+                        allergens: allergens,
+                        preferences: preferences 
+                    })
+                });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    let dessertMatch = data.warm_dialogue ? data.warm_dialogue.match(/【(.*?)】/) : null;
+                    let finalDessertName = dessertMatch ? dessertMatch[1] : (data.dessert_list ? data.dessert_list[0] : "客製化療癒甜點");
+
+                    renderAIResult({ 
+                        dialogue: data.warm_dialogue, 
+                        emotionLabel: data.detected_emotion || "心境感應", 
+                        coords: data.coord_list || null,
+                        dessertName: finalDessertName,
+                        top3List: data.dessert_list || []
+                    });
+                } else { 
+                    alert("分析失敗：" + data.message); 
+                }
+            } catch (e) { 
+                alert("連線錯誤，請確認後端服務是否正常運作。"); 
+            } finally { 
+                btn.disabled = false; 
+                btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 傳送心聲給顧問`; 
+            }
+        }
+
+        // 渠道二：影像表情辨識 + 3D 座標推薦
+        async function analyzeImageEmotion() {
+            const btn = document.getElementById('btnImageSubmit');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 影像分析與座標映射...`;
+            
+            let formData = new FormData();
+            
+            if (currentPhotoBlob) {
+                formData.append("file", currentPhotoBlob, "selfie.jpeg");
+            } else {
+                const fileInput = document.getElementById('imageFile');
+                if(!fileInput.files[0]) { 
+                    alert("請先選擇照片或拍攝自拍！"); 
+                    btn.disabled = false; 
+                    return; 
+                }
+                formData.append("file", fileInput.files[0]);
+            }
+            
+            try {
+                // 第一階段：影像處理與情緒分析
+                const imgAnalysisResponse = await fetch('/api/analyze-emotion-image', { method: 'POST', body: formData });
+                const imgData = await imgAnalysisResponse.json();
+                
+                if (imgData.status === 'success') {
+                    const coords = imgData.coord_list; 
+                    
+                    document.getElementById('placeholderStatus').classList.add('hidden');
+                    document.getElementById('reportContent').classList.remove('hidden');
+                    document.getElementById('coordBadge').classList.remove('hidden');
+                    document.getElementById('lblEmotion').innerText = imgData.detected_emotion;
+                    document.getElementById('lblCoordinates').innerText = `V:${coords[0].toFixed(1)} | A:${coords[1].toFixed(1)} | S:${coords[2].toFixed(1)}`;
+
+                    // 第二階段：由座標生成推薦甜點與對話
+                    btn.innerHTML = `<i class="fa-solid fa-brain animate-spin"></i> AI 顧問生成處方...`;
+                    const { allergens, preferences } = getUserDietarySettings();
+                    const recommendationResponse = await fetch('/api/recommend-dessert-from-coord', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            coordinates: coords, 
+                            detected_emotion: imgData.detected_emotion,
+                            allergens: allergens,
+                            preferences: preferences
+                        })
+                    });
+                    const recommendData = await recommendationResponse.json();
+                    
+                    if (recommendData.status === 'success') {
+                        let dessertMatch = recommendData.warm_recommendation ? recommendData.warm_recommendation.match(/【(.*?)】/) : null;
+                        let finalDessertName = dessertMatch ? dessertMatch[1] : "客製化療癒甜點";
+
+                        renderAIResult({ 
+                            dialogue: recommendData.warm_recommendation, 
+                            emotionLabel: imgData.detected_emotion, 
+                            coords: coords,
+                            dessertName: finalDessertName,
+                            top3List: recommendData.dessert_list || []
+                        });
+                    } else { 
+                        alert("AI 生成推薦失敗：" + recommendData.message); 
+                    }
+                } else { 
+                    alert("影像分析失敗：" + imgData.message); 
+                }
+            } catch (e) { 
+                alert("連線錯誤：" + e.message); 
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-eye"></i> 啟動影像 AI 推薦`;
+            }
+        }
+
+        // 渲染 AI 報告結果 (支援高品質櫻花卡片呈現)
+        function renderAIResult({ dialogue, emotionLabel, coords, dessertName, top3List }) {
+            document.getElementById('placeholderStatus').classList.add('hidden');
+            document.getElementById('reportContent').classList.remove('hidden');
+            
+            if (coords) {
+                document.getElementById('coordBadge').classList.remove('hidden');
+                document.getElementById('lblCoordinates').innerText = `V:${coords[0].toFixed(1)} | A:${coords[1].toFixed(1)} | S:${coords[2].toFixed(1)}`;
+            } else {
+                document.getElementById('coordBadge').classList.add('hidden');
+            }
+
+            document.getElementById('lblEmotion').innerText = emotionLabel;
+            document.getElementById('txtDialogue').innerText = dialogue;
+            
+            // 渲染前三名甜點列表卡片
+            const dessertIcons = ['🍰', '🍨', '🥧', '🧁', '🍩'];
+            if (top3List && top3List.length > 0) {
+                const cardsHtml = top3List.map((item, idx) => `
+                    <div class="p-3 rounded-2xl transition-all ${
+                        idx === 0 
+                        ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold shadow-md shadow-rose-500/20' 
+                        : 'bg-white/80 border border-white text-slate-700 shadow-2xs'
+                    } flex justify-between items-center text-xs">
+                        <div class="flex items-center space-x-2.5">
+                            <span class="text-base">${dessertIcons[idx % dessertIcons.length]}</span>
+                            <div>
+                                <span class="font-bold text-xs block">${idx === 0 ? '👑 ' : ''}${item}</span>
+                                <span class="text-[9px] ${idx === 0 ? 'text-rose-100' : 'text-slate-400'} font-normal">Top ${idx + 1} 完美適配</span>
+                            </div>
+                        </div>
+                        ${idx === 0 ? '<span class="text-[9px] bg-white/20 text-white px-2 py-0.5 rounded-full font-bold">首選處方</span>' : '<span class="text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">最佳推薦</span>'}
+                    </div>
+                `).join('');
+                document.getElementById('dessertContainer').innerHTML = cardsHtml;
+            } else {
+                document.getElementById('dessertContainer').innerHTML = `
+                    <div class="p-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white text-xs font-bold text-center shadow-md">
+                        👑 首選處方：${dessertName}
+                    </div>`;
+            }
+        }
+    </script>
+</body>
+</html>
