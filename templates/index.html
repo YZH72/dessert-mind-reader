@@ -581,7 +581,10 @@
             }
 
             document.getElementById('lblEmotion').innerText = emotionLabel;
-            document.getElementById('txtDialogue').innerText = dialogue;
+            const txtBox = document.getElementById('txtDialogue');
+            if (txtBox) {
+                txtBox.innerText = dialogue || "💬 甜點顧問已為您比對出最佳空間向量，請參考下方專屬療癒甜點處方！";
+            }
             
             // 渲染前三名甜點列表卡片
             const dessertIcons = ['🍰', '🍨', '🥧', '🧁', '🍩'];
