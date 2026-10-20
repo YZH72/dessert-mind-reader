@@ -42,7 +42,11 @@ app = FastAPI(
 client = Groq(api_key="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")
 
 # 直接把你的 Windows 實際路徑複製貼上
-templates = Jinja2Templates(directory=r"C:\Users\janhs\OneDrive\桌面\Emotion_Project\templates")
+# ✅ 改成相對路徑（動態抓取專案目錄下的 templates 資料夾）
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Pydantic 模型，用來定義前端送過來的 JSON 結構
 class SentimentRequest(BaseModel):
