@@ -224,7 +224,7 @@ async def analyze_emotion_image(file: UploadFile = File(...)):
         # 2. 呼叫記憶體中的 YOLO 模型進行表情推論
         if hasattr(app.state, "yolo_model") and app.state.yolo_model is not None:
             # 跑模型預測 (設定信心度門檻值，並關閉 verbose 輸出讓終端機乾淨)
-            results = app.state.yolo_model(img, conf=0.25, verbose=False)
+            results = app.state.yolo_model(img, conf=0.25, verbose=False, device='cpu')
             
             # 判斷有沒有偵測到任何人臉表情
             if len(results) > 0 and len(results[0].boxes) > 0:
