@@ -20,8 +20,8 @@ tracker = EmotionSpaceTracker()
 async def lifespan(app: FastAPI):
     print("🎬 正在初始化 YOLO 表情辨識模型...")
     try:
-        # 指向你 train-4 的最强大腦權重檔
-        model_path = r'runs\detect\train-4\weights\best.pt'
+        # 指向你 train-7 的最强大腦權重檔
+        model_path = r'runs/detect/train-7/weights/best.pt'
         # 載入並儲存至 app.state，這樣未來的 API 路由都可以直接呼叫
         app.state.yolo_model = YOLO(model_path)
         print("✅ YOLO 影像辨識模型權重載入成功！")
