@@ -40,6 +40,34 @@ app = FastAPI(
 
 # 初始化 Groq 客戶端
 client = Groq(api_key="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")
+# 萬能 Groq 呼叫函式：自動依照你的 API 清單輪流嘗試，確保 100% 穩定輸出
+def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=False):
+    # 根據你的 test_groq.py 實際授權清單進行自動備援排序
+    candidate_models = [
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-120b"
+    ]
+    
+    for model_name in candidate_models:
+        try:
+            kwargs = {
+                "model": model_name,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            if is_json:
+                kwargs["response_format"] = {"type": "json_object"}
+                
+            completion = client.chat.completions.create(**kwargs)
+            print(f"✅ 成功呼叫 Groq 模型: {model_name}")
+            return completion.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"⚠️ 模型 {model_name} 呼叫失敗，嘗試下一個... 錯誤: {e}")
+            continue
+            
+    raise Exception("所有授權的 Groq 模型皆無法回應，請確認 API 狀態。")
 
 # 直接把你的 Windows 實際路徑複製貼上
 # ✅ 改成相對路徑（動態抓取專案目錄下的 templates 資料夾）
@@ -117,16 +145,15 @@ def analyze_sentiment(payload: SentimentRequest):
         {{"happy": 0.1, "sad": 0.7, "angry": 0.0, "surprise": 0.0, "fear": 0.2, "disgust": 0.0, "neutral": 0.0}}
         """
         
-        cls_completion = client.chat.completions.create(
-            model="qwen/qwen3.8-27b",  # 或使用 "llama-3.2-11b-vision-preview"
+        cls_response_text = generate_groq_response(
             messages=[{"role": "user", "content": classifier_prompt}],
             temperature=0.1,
-            response_format={"type": "json_object"} # 強制 Groq 回傳標準 JSON
+            is_json=True
         )
         
         import json
         # 解析 AI 吐回來的各情緒比例字典
-        emotion_weights = json.loads(cls_completion.choices[0].message.content.strip())
+        emotion_weights = json.loads(cls_response_text)
         
         # Step 2: 連結 logic.py 權重，把比例塞進 tracker.counts
         tracker.reset_space()
@@ -174,8 +201,7 @@ X(愉悅度):{coords[0]:.2f}、Y(喚醒度):{coords[1]:.2f}、Z(敏感度):{coor
 3. 不要標題，直接輸出溫暖的對話內容。
 """
 
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant", # 文字也用大模型，生成的語氣會更像諮商師
+        ai_reply = generate_groq_response(
             messages=[
                 {"role": "system", "content": "你是一位溫柔且精通情感運算的 AI 甜點心理顧問。"},
                 {"role": "user", "content": text_generation_prompt}
@@ -183,7 +209,7 @@ X(愉悅度):{coords[0]:.2f}、Y(喚醒度):{coords[1]:.2f}、Z(敏感度):{coor
             temperature=0.7,
             max_tokens=600
         )
-        ai_reply = completion.choices[0].message.content.strip()
+        #ai_reply = completion.choices[0].message.content.strip()
         
         # 🚀【關鍵成功因素】：這裡一定要回傳 dessert_list，前端網頁的 JavaScript 才能抓去顯示 Top 1！
        # 4. 🚀【超級防呆回傳】把所有前端可能會讀取的變數名稱、大小寫全部塞進去！
@@ -317,8 +343,7 @@ X(愉悅度):{request.coordinates[0]:.2f}、Y(喚醒度):{request.coordinates[1]
 """
 
         # 呼叫 Groq 大腦
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant", 
+        warm_text = generate_groq_response( 
             messages=[
                 {"role": "system", "content": "你是一位溫柔且精通情感運算的 AI 甜點心理顧問。"},
                 {"role": "user", "content": prompt}
@@ -327,7 +352,7 @@ X(愉悅度):{request.coordinates[0]:.2f}、Y(喚醒度):{request.coordinates[1]
             max_tokens=600
         )
         
-        warm_text = completion.choices[0].message.content.strip()
+        #warm_text = completion.choices[0].message.content.strip()
         
         # 把這 3 個甜點的陣列也一起回傳給前端，方便前端動態生成 3 個卡片
         return {
