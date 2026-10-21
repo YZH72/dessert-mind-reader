@@ -175,7 +175,7 @@ X(愉悅度):{coords[0]:.2f}、Y(喚醒度):{coords[1]:.2f}、Z(敏感度):{coor
 """
 
         completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b", # 文字也用大模型，生成的語氣會更像諮商師
+            model="llama-3.3-70b-versatile", # 文字也用大模型，生成的語氣會更像諮商師
             messages=[
                 {"role": "system", "content": "你是一位溫柔且精通情感運算的 AI 甜點心理顧問。"},
                 {"role": "user", "content": text_generation_prompt}
@@ -318,7 +318,7 @@ X(愉悅度):{request.coordinates[0]:.2f}、Y(喚醒度):{request.coordinates[1]
 
         # 呼叫 Groq 大腦
         completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b", 
+            model="llama-3.3-70b-versatile", 
             messages=[
                 {"role": "system", "content": "你是一位溫柔且精通情感運算的 AI 甜點心理顧問。"},
                 {"role": "user", "content": prompt}
