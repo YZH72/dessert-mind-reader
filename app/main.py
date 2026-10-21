@@ -49,6 +49,32 @@ def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=Fa
         "openai/gpt-oss-120b"
     ]
     
+    last_error = ""
+    for model_name in candidate_models:
+        try:
+            kwargs = {
+                "model": model_name,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            if is_json:
+                kwargs["response_format"] = {"type": "json_object"}
+                
+            completion = client.chat.completions.create(**kwargs)
+            res_text = completion.choices[0].message.content.strip()
+            if res_text:
+                print(f"✅ 成功使用模型 [{model_name}] 生成對話內容！")
+                return res_text
+        except Exception as e:
+            last_error = str(e)
+            print(f"⚠️ 模型 [{model_name}] 呼叫失敗，原因: {last_error}")
+            continue
+            
+    print(f"❌ 所有模型皆呼叫失敗，最後錯誤: {last_error}")
+    # 若全都失敗，回傳提示而非空白，避免前端顯示預設備援文字
+    return f"【AI 甜點顧問正在閉關調配處方】目前 Groq 服務繁忙（{last_error}），但已為您比對出空間幾何最佳解！"
+    
     for model_name in candidate_models:
         try:
             kwargs = {
@@ -358,6 +384,7 @@ X(愉悅度):{request.coordinates[0]:.2f}、Y(喚醒度):{request.coordinates[1]
         return {
             "status": "success", 
             "warm_recommendation": warm_text,
+            "warm_dialogue": warm_text,  # 雙重防呆
             "dessert_list": matched_desserts  # 這裡把 ["甜點1", "甜點2", "甜點3"] 丟給網頁
         }
         
