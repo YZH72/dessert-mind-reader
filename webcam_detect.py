@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont # 新增：引入 Pillow 用於處�
 from logic import EmotionSpaceTracker
 
 # 1. 載入剛跑完的「最強大腦」best.pt
-model_path = r'runs\detect\train-4\weights\best.pt'
+model_path = r'runs/detect/train-7/weights/best.pt'
 model = YOLO(model_path)
 
 # 2. 初始化 3D 空間追蹤器與流程狀態
@@ -60,7 +60,7 @@ while True:
             print("無法接收鏡頭影像，程式結束。")
             break
         frame = cv2.flip(frame, 1) # 鏡像翻轉，讓使用者看起來像在照鏡子（1 代表左右翻轉，0 代表上下翻轉）
-        results = model.predict(source=frame, conf=0.2, show=False) #預測
+        results = model.predict(source=frame, conf=0.3, show=False) #預測
 
         for r in results:
             for c in r.boxes.cls:
