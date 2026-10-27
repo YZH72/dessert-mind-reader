@@ -17,31 +17,40 @@ dominant_emotions = ""
 
 # 3. 開啟電腦鏡頭
 cap = cv2.VideoCapture(0)
+# 【優化 1】設定鏡頭解析度為 640x480，顯著提升 I/O 與推論速度
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 if not cap.isOpened():
     print("錯誤：無法開啟鏡頭。")
     exit()
 
 # ==========================================================
+# 【優化 2】全域預載字型，避免在迴圈內反覆 IO 讀取字型檔
+# ==========================================================
+try:
+    GLOBAL_FONT_16 = ImageFont.truetype("msjh.ttc", 16)
+    GLOBAL_FONT_18 = ImageFont.truetype("msjh.ttc", 18)
+    GLOBAL_FONT_22 = ImageFont.truetype("msjh.ttc", 22)
+except IOError:
+    GLOBAL_FONT_16 = ImageFont.load_default()
+    GLOBAL_FONT_18 = ImageFont.load_default()
+    GLOBAL_FONT_22 = ImageFont.load_default()
+
+# ==========================================================
 # 支援 OpenCV 畫面顯示中文的輔助函式
 # ==========================================================
-def draw_chinese_text(img, text, position, font_size=20, color=(255, 255, 255)):
+def draw_chinese_text_fast(img, text_list_with_props):
     """ 透過 Pillow 在 OpenCV 影像上繪製中文字型 """
     # 將 OpenCV 的 BGR 影像轉為 PIL 的 RGB 影像
+    # [(text, pos, font, color), ...]
+    """【優化 3】批次繪製中文字串，一次性完成 BGR <-> RGB 轉換，極大化效率"""
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    
     draw = ImageDraw.Draw(img_pil)
     
-    # 嘗試載入 Windows 內建的微軟正黑體，若失敗則使用預設字體
-    try:
-        font = ImageFont.truetype("msjh.ttc", font_size)
-    except IOError:
-        try:
-            font = ImageFont.truetype("arial.ttf", font_size) # 備用字體
-        except IOError:
-            font = ImageFont.load_default()
-            
-    # Pillow 的顏色順序是 RGB
-    draw.text(position, text, font=font, fill=color)
+    for text, position, font, color in text_list_with_props:
+        draw.text(position, text, font=font, fill=color)
     
     # 再轉回 OpenCV 的 BGR 影像格式
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
@@ -60,7 +69,7 @@ while True:
             print("無法接收鏡頭影像，程式結束。")
             break
         frame = cv2.flip(frame, 1) # 鏡像翻轉，讓使用者看起來像在照鏡子（1 代表左右翻轉，0 代表上下翻轉）
-        results = model.predict(source=frame, conf=0.3, show=False) #預測
+        results = model.predict(source=frame, conf=0.25, imgsz=640, verbose=False, show=False) #預測
 
         for r in results:
             for c in r.boxes.cls:
@@ -92,40 +101,75 @@ while True:
         cv2.putText(combined_frame, "SWEET SENSE: ANALYSIS", (x_offset, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 127), 2, cv2.LINE_AA)
         
-        # 情緒結果區
-        combined_frame = draw_chinese_text(combined_frame, f"主要情緒: {dominant_emotions}", (x_offset, 70), 18, (0, 200, 255))
-        
-        # 座標與感官註解區
-        combined_frame = draw_chinese_text(combined_frame, f"X : {final_coord[0]:.2f} (豐富度/熱量需求)", (x_offset, 105), 16, (180, 180, 180))
-        combined_frame = draw_chinese_text(combined_frame, f"Y : {final_coord[1]:.2f} (質地/脆軟程度)", (x_offset, 130), 16, (180, 180, 180))
-        combined_frame = draw_chinese_text(combined_frame, f"Z : {final_coord[2]:.2f} (風味/刺激強度)", (x_offset, 155), 16, (180, 180, 180))
-        
-        cv2.line(combined_frame, (x_offset, 180), (x_offset + 340, 180), (80, 80, 80), 1)
+        text_batch = [
+            (
+                f"主要情緒: {dominant_emotions}",
+                (x_offset, 70),
+                GLOBAL_FONT_18,
+                (0, 200, 255),
+            ),
+            (
+                f"X : {final_coord[0]:.2f} (豐富度/熱量需求)",
+                (x_offset, 105),
+                GLOBAL_FONT_16,
+                (180, 180, 180),
+            ),
+            (
+                f"Y : {final_coord[1]:.2f} (質地/脆軟程度)",
+                (x_offset, 130),
+                GLOBAL_FONT_16,
+                (180, 180, 180),
+            ),
+            (
+                f"Z : {final_coord[2]:.2f} (風味/刺激強度)",
+                (x_offset, 155),
+                GLOBAL_FONT_16,
+                (180, 180, 180),
+            ),
+            ("匹配推薦清單:", (x_offset, 200), GLOBAL_FONT_18, (255, 255, 255)),
+        ]
 
-        # 甜點清單
-        combined_frame = draw_chinese_text(combined_frame, "匹配推薦清單:", (x_offset, 200), 18, (255, 255, 255))
         for i, dessert in enumerate(top_desserts, 1):
-            combined_frame = draw_chinese_text(combined_frame, f"No.{i} {dessert}", (x_offset, 235 + ((i - 1) * 45)), 22, (255, 255, 255))
-            
-        combined_frame = draw_chinese_text(
-            combined_frame, 
-            "[ 按 R 鍵重新拍攝 ]\n[ 按 Q 鍵退出程式 ]", 
-            (x_offset, 380), 
-            font_size=16, 
-            color=(100, 100, 255)
+            text_batch.append(
+                (
+                    f"No.{i} {dessert}",
+                    (x_offset, 235 + ((i - 1) * 45)),
+                    GLOBAL_FONT_22,
+                    (255, 255, 255),
+                )
+            )
+
+        text_batch.append(
+            (
+                "[ 按 R 鍵重新拍攝 ]\n[ 按 Q 鍵退出程式 ]",
+                (x_offset, 380),
+                GLOBAL_FONT_16,
+                (100, 100, 255),
+            )
         )
+        combined_frame = draw_chinese_text_fast(combined_frame, text_batch)
     else:
         # 即時動態偵測狀態：提示使用者可以按空白鍵
         cv2.putText(combined_frame, "REALTIME AI", (x_offset, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-        
-        combined_frame = draw_chinese_text(
-            combined_frame, 
-            "系統正在即時分析中...\n請面向鏡頭調整表情。\n\n確認後，請按下：\n【 空白鍵 (SPACE) 】\n鎖定並查看甜點菜單。", 
-            (x_offset, 100), 
-            font_size=18, 
-            color=(180, 180, 180)
-        )
+        lines = [
+            "System Analyzing...",
+            "Please face the camera.",
+            "",
+            "Press [ SPACE ] to Lock",
+            "and view Dessert Menu.",
+        ]
+        for idx, line in enumerate(lines):
+            cv2.putText(
+                combined_frame,
+                line,
+                (x_offset, 100 + idx * 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (180, 180, 180),
+                1,
+                cv2.LINE_AA,
+            )
 
     # 顯示拼接後、絕不遮臉的完美畫面
     cv2.imshow("Emotion Project - 3D Recommendation Space", combined_frame)
