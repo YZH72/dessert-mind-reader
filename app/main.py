@@ -39,7 +39,8 @@ app = FastAPI(
 )
 
 # 初始化 Groq 客戶端
-client = Groq(api_key="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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+client = Groq(api_key=GROQ_API_KEY)
 # 萬能 Groq 呼叫函式：自動依照你的 API 清單輪流嘗試，確保 100% 穩定輸出
 def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=False):
     # 根據你的 test_groq.py 實際授權清單進行自動備援排序
