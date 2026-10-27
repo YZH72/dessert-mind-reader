@@ -75,25 +75,6 @@ def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=Fa
     # 若全都失敗，回傳提示而非空白，避免前端顯示預設備援文字
     return f"【AI 甜點顧問正在閉關調配處方】目前 Groq 服務繁忙（{last_error}），但已為您比對出空間幾何最佳解！"
     
-    for model_name in candidate_models:
-        try:
-            kwargs = {
-                "model": model_name,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens
-            }
-            if is_json:
-                kwargs["response_format"] = {"type": "json_object"}
-                
-            completion = client.chat.completions.create(**kwargs)
-            print(f"✅ 成功呼叫 Groq 模型: {model_name}")
-            return completion.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"⚠️ 模型 {model_name} 呼叫失敗，嘗試下一個... 錯誤: {e}")
-            continue
-            
-    raise Exception("所有授權的 Groq 模型皆無法回應，請確認 API 狀態。")
 
 # 直接把你的 Windows 實際路徑複製貼上
 # ✅ 改成相對路徑（動態抓取專案目錄下的 templates 資料夾）
