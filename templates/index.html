@@ -345,9 +345,79 @@
 
         </div>
     </div>
+    <!-- 全螢幕加載與進度條動畫 Modal -->
+    <div id="loadingModal" class="fixed inset-0 bg-black/60 backdrop-blur-md hidden flex flex-col items-center justify-center z-50 transition-all duration-300">
+        <div class="bg-white/90 dark:bg-gray-800/90 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl border border-white/20 text-center flex flex-col items-center">
+            <!-- 旋轉載入圈圈 -->
+            <div class="relative w-20 h-20 mb-6 flex items-center justify-center">
+                <div class="absolute inset-0 rounded-full border-4 border-rose-200 dark:border-rose-900/40"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-rose-500 border-t-transparent animate-spin"></div>
+                <span class="text-2xl">🍰</span>
+            </div>
+        
+            <h3 id="loadingStatusText" class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
+                AI 甜點顧問分析中...
+            </h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-6">
+                正在計算 3D 歐幾里得幾何特徵與療癒配方
+            </p>
+
+            <!-- 進度條 -->
+            <div class="w-full bg-gray-200 dark:bg-gray-700 h-2.5 rounded-full overflow-hidden">
+                <div id="loadingProgressBar" class="bg-gradient-to-r from-rose-400 to-amber-500 h-full w-0 transition-all duration-300 ease-out"></div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- JavaScript 完整邏輯 (保持 100% 原始 API 連線邏輯) -->
     <script>
+        // ==========================================
+        // 🚀 加載動畫與進度條控制邏輯
+        // ==========================================
+        let loadingInterval = null;
+
+        function showLoading(statusMessage = "AI 甜點顧問分析中...") {
+            const modal = document.getElementById('loadingModal');
+            const text = document.getElementById('loadingStatusText');
+            const bar = document.getElementById('loadingProgressBar');
+            
+            text.innerText = statusMessage;
+            bar.style.width = '10%';
+            modal.classList.remove('hidden');
+            
+            if (loadingInterval) clearInterval(loadingInterval);
+            // 模擬 1~8 秒平滑推進進度條
+            let progress = 10;
+            loadingInterval = setInterval(() => {
+                if (progress < 90) {
+                    progress += Math.floor(Math.random() * 12) + 4;
+                    bar.style.width = `${Math.min(progress, 90)}%`;
+                }
+            }, 350);
+        }
+
+        function updateLoadingText(statusMessage) {
+            const text = document.getElementById('loadingStatusText');
+            if (text) text.innerText = statusMessage;
+        }
+
+        function hideLoading() {
+            const modal = document.getElementById('loadingModal');
+            const bar = document.getElementById('loadingProgressBar');
+            
+            if (loadingInterval) clearInterval(loadingInterval);
+            
+            bar.style.width = '100%';
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                bar.style.width = '0%';
+            }, 300);
+        }
+
+        // ==========================================
+        // 攝影機與 DOM 元素
+        // ==========================================
         const cameraStream = document.getElementById('cameraStream');
         const photoPreview = document.getElementById('photoPreview');
         const cameraControls = document.getElementById('cameraControls');
@@ -449,7 +519,7 @@
             return { allergens, preferences };
         }
 
-        // 渠道一：純文字分析
+        // 渠道一：純文字分析(整合 Loading 動畫)
         async function analyzeTextSentiment() {
             const userText = document.getElementById('userInput').value.trim();
             if (!userText) return alert("請先寫下你的內心話。");
@@ -458,6 +528,7 @@
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 文字分析中...`;
 
+            showLoading("正在進行 SenticNet 語意分析與情緒對應...");
             const { allergens, preferences } = getUserDietarySettings();
 
             try {
@@ -494,14 +565,15 @@
             }
         }
 
-        // 渠道二：影像表情辨識 + 3D 座標推薦
+        // 渠道二：影像表情辨識 + 3D 座標推薦(整合 Loading 動畫)
         async function analyzeImageEmotion() {
             const btn = document.getElementById('btnImageSubmit');
             btn.disabled = true;
             btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 影像分析與座標映射...`;
             
+            showLoading("正在透過 YOLO 辨識臉部特徵...");
+
             let formData = new FormData();
-            
             if (currentPhotoBlob) {
                 formData.append("file", currentPhotoBlob, "selfie.jpeg");
             } else {
@@ -529,6 +601,7 @@
                     document.getElementById('lblCoordinates').innerText = `V:${coords[0].toFixed(1)} | A:${coords[1].toFixed(1)} | S:${coords[2].toFixed(1)}`;
 
                     // 第二階段：由座標生成推薦甜點與對話
+                    updateLoadingText("正在計算並召喚 AI 甜點顧問...");
                     btn.innerHTML = `<i class="fa-solid fa-brain animate-spin"></i> AI 顧問生成處方...`;
                     const { allergens, preferences } = getUserDietarySettings();
                     const recommendationResponse = await fetch('/api/recommend-dessert-from-coord', {
@@ -563,6 +636,7 @@
             } catch (e) { 
                 alert("連線錯誤：" + e.message); 
             } finally {
+                hideLoading();
                 btn.disabled = false;
                 btn.innerHTML = `<i class="fa-solid fa-eye"></i> 啟動影像 AI 推薦`;
             }
@@ -583,7 +657,7 @@
             document.getElementById('lblEmotion').innerText = emotionLabel;
             const txtBox = document.getElementById('txtDialogue');
             if (txtBox) {
-                txtBox.innerText = dialogue || "💬 甜點顧問已為您比對出最佳空間向量，請參考下方專屬療癒甜點處方！";
+                txtBox.innerText = dialogue || "💬 已為您比對出專屬最佳療癒甜點處方！";
             }
             
             // 渲染前三名甜點列表卡片

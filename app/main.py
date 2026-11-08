@@ -57,7 +57,8 @@ def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=Fa
                 "model": model_name,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens
+                "max_tokens": max_tokens,
+                "timeout": 4.0  # ✅ 設定 4 秒強刷 Timeout，防止 API 卡死
             }
             if is_json:
                 kwargs["response_format"] = {"type": "json_object"}
@@ -255,10 +256,16 @@ async def analyze_emotion_image(file: UploadFile = File(...)):
         if img is None:
             return {"status": "error", "message": "圖片解碼失敗，請重新拍照"}
 
+        # ✅ 零風險速度優化：縮放至 480x480，顯著降低 Render CPU 運算開銷，且保留完整人臉細節
+        h, w = img.shape[:2]
+        if max(h, w) > 480:
+            scale = 480 / max(h, w)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        
         # 2. 呼叫記憶體中的 YOLO 模型進行表情推論
         if hasattr(app.state, "yolo_model") and app.state.yolo_model is not None:
             # 跑模型預測 (設定信心度門檻值，並關閉 verbose 輸出讓終端機乾淨)
-            results = app.state.yolo_model(img, conf=0.25, verbose=False, device='cpu')
+            results = app.state.yolo_model(img, conf=0.25, imgsz=480, verbose=False, device='cpu')
             
             # 判斷有沒有偵測到任何人臉表情
             if len(results) > 0 and len(results[0].boxes) > 0:
