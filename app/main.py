@@ -39,7 +39,7 @@ app = FastAPI(
 )
 
 # 初始化 Groq 客戶端
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 client = Groq(api_key=GROQ_API_KEY)
 # 萬能 Groq 呼叫函式：自動依照你的 API 清單輪流嘗試，確保 100% 穩定輸出
 def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=False):
