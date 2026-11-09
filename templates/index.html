@@ -583,61 +583,66 @@
             
             showInlineLoading("正在使用 ONNX Web 進行極速臉部辨識...");
 
-            try {
-                // 表情對應 3D 座標表 (Valence, Arousal, Dominance)
-                const emotionMapping = {
-                    "happy": [0.81, 0.51, 0.46],
-                    "sad": [-0.63, -0.27, -0.33],
-                    "angry": [-0.51, 0.59, 0.25],
-                    "surprise": [0.4, 0.67, -0.13],
-                    "fear": [-0.64, 0.6, -0.43],
-                    "disgust": [-0.6, 0.35, 0.11],
-                    "neutral": [0.0, 0.0, 0.0]
-                };
-
-                // 若尚未初始化則自動補載入 ONNX Session
-                if (!onnxSession) {
-                    onnxSession = await ort.InferenceSession.create('/static/best.onnx');
+            let formData = new FormData();
+            if (currentPhotoBlob) {
+                formData.append("file", currentPhotoBlob, "selfie.jpeg");
+            } else {
+                const fileInput = document.getElementById('imageFile');
+                if(!fileInput.files[0]) { 
+                    alert("請先選擇照片或拍攝自拍！"); 
+                    btn.disabled = false; 
+                    hideInlineLoading();
+                    return; 
                 }
-
-                // 前端極速辨識 (預設 neutral 標籤與 3D 座標)
-                const detected_emotion = "Happy"; 
-                const coords = emotionMapping[detected_emotion.toLowerCase()] || [0.0, 0.0, 0.0];
-
-                updateInlineText("正在計算 3D 歐幾里得幾何距離與 Groq AI 語錄...");
-                btn.innerHTML = `<i class="fa-solid fa-brain animate-spin"></i> AI 顧問生成處方...`;
-
-                const { allergens, preferences } = getUserDietarySettings();
-
-                // 第二階段：由 3D 座標呼叫後端生成處方與 Groq 對話
-                const recommendationResponse = await fetch('/api/recommend-dessert-from-coord', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        coordinates: coords, 
-                        detected_emotion: detected_emotion,
-                        allergens: allergens,
-                        preferences: preferences
-                    })
-                });
-                const recommendData = await recommendationResponse.json();
+                formData.append("file", fileInput.files[0]);
+            }
+            
+            try {
+                // 第一階段：將照片傳給後端進行 YOLO 動態辨識與 3D 空間映射
+                const imgAnalysisResponse = await fetch('/api/analyze-emotion-image', { method: 'POST', body: formData });
+                const imgData = await imgAnalysisResponse.json();
                 
-                if (recommendData.status === 'success') {
-                    let dessertMatch = recommendData.warm_recommendation ? recommendData.warm_recommendation.match(/【(.*?)】/) : null;
-                    let finalDessertName = dessertMatch ? dessertMatch[1] : "客製化療癒甜點";
+                if (imgData.status === 'success') {
+                    const coords = imgData.coord_list; 
+                    const detectedEmotion = imgData.detected_emotion;
 
-                    renderAIResult({ 
-                        dialogue: recommendData.warm_recommendation, 
-                        emotionLabel: detected_emotion, 
-                        coords: coords,
-                        dessertName: finalDessertName,
-                        top3List: recommendData.dessert_list || []
+                    updateInlineText(`偵測到表情：【${detectedEmotion}】，正在召喚 AI 甜點顧問...`);
+                    btn.innerHTML = `<i class="fa-solid fa-brain animate-spin"></i> AI 顧問生成處方...`;
+                    
+                    const { allergens, preferences } = getUserDietarySettings();
+
+                    // 第二階段：將真實辨識出的座標傳給後端生成推薦甜點與對話
+                    const recommendationResponse = await fetch('/api/recommend-dessert-from-coord', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            coordinates: coords, 
+                            detected_emotion: detectedEmotion,
+                            allergens: allergens,
+                            preferences: preferences
+                        })
                     });
+                    const recommendData = await recommendationResponse.json();
+                    
+                    if (recommendData.status === 'success') {
+                        let dessertMatch = recommendData.warm_recommendation ? recommendData.warm_recommendation.match(/【(.*?)】/) : null;
+                        let finalDessertName = dessertMatch ? dessertMatch[1] : "客製化療癒甜點";
+
+                        renderAIResult({ 
+                            dialogue: recommendData.warm_recommendation, 
+                            emotionLabel: detectedEmotion, 
+                            coords: coords,
+                            dessertName: finalDessertName,
+                            top3List: recommendData.dessert_list || []
+                        });
+                    } else { 
+                        alert("AI 生成推薦失敗：" + recommendData.message); 
+                    }
                 } else { 
-                    alert("AI 生成推薦失敗：" + recommendData.message); 
+                    alert("影像分析失敗：" + imgData.message); 
                 }
             } catch (e) { 
-                alert("辨識過程發生異常：" + e.message); 
+                alert("連線錯誤：" + e.message); 
             } finally {
                 hideInlineLoading();
                 btn.disabled = false;
