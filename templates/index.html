@@ -681,24 +681,38 @@
             }
 
             const scores = labels.map(() => 0);
+            let bestScore = 0.25;
             if (rows === labels.length + 4) {
-                // 原始 YOLO Detect 輸出 [1, 4 + 類別數, 候選框數]。
+                // 先選出最有把握的候選框，再取同一個框的各類分數。
+                // 不能各類都取全圖最高分，否則可能混入其他臉或背景。
+                let bestBox = -1;
                 for (let classId = 0; classId < labels.length; classId++) {
                     const offset = (classId + 4) * columns;
                     for (let box = 0; box < columns; box++) {
                         const score = data[offset + box];
-                        if (score > scores[classId]) scores[classId] = score;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestBox = box;
+                        }
                     }
                 }
+                if (bestBox >= 0) {
+                    labels.forEach((_, classId) => {
+                        scores[classId] = data[(classId + 4) * columns + bestBox];
+                    });
+                }
             } else if (columns === 6) {
-                // 已後處理的 Detect 輸出 [1, 候選框數, 6]。
+                // 已後處理的模型只提供每個框的第一名類別。
+                let bestClass = -1;
                 for (let box = 0; box < rows; box++) {
                     const score = data[box * 6 + 4];
                     const classId = data[box * 6 + 5];
-                    if (Number.isInteger(classId) && classId >= 0 && classId < labels.length && score > scores[classId]) {
-                        scores[classId] = score;
+                    if (Number.isInteger(classId) && classId >= 0 && classId < labels.length && score > bestScore) {
+                        bestScore = score;
+                        bestClass = classId;
                     }
                 }
+                if (bestClass >= 0) scores[bestClass] = bestScore;
             } else {
                 throw new Error(`模型輸出（${dims.join(' × ')}）與類別檔不符。請用專案的 PowerShell 指令重新匯出模型。`);
             }
@@ -707,7 +721,11 @@
                 score: scores[index],
             })).sort((left, right) => right.score - left.score);
             console.table(ranked.map(({label, score}) => ({label, score: score.toFixed(3)})));
-            return ranked[0].score > 0.25 ? ranked[0] : null;
+            if (ranked[0].score <= 0.25) return null;
+            return {
+                score: ranked[0].score,
+                emotionScores: Object.fromEntries(ranked.map(({label, score}) => [label, score])),
+            };
         }
 
         async function analyzeImageEmotion() {
@@ -744,7 +762,7 @@
                 const response = await fetch('/api/recommend-dessert-from-coord', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({detected_emotion: detection.label, allergens, preferences}),
+                    body: JSON.stringify({emotion_scores: detection.emotionScores, allergens, preferences}),
                 });
                 if (!response.ok) throw new Error(`推薦服務連線失敗（HTTP ${response.status}）。`);
                 const data = await response.json();
@@ -775,7 +793,7 @@
             
             if (coords) {
                 document.getElementById('coordBadge').classList.remove('hidden');
-                document.getElementById('lblCoordinates').innerText = `V:${coords[0].toFixed(1)} | A:${coords[1].toFixed(1)} | S:${coords[2].toFixed(1)}`;
+                document.getElementById('lblCoordinates').innerText = `V:${coords[0].toFixed(2)} | A:${coords[1].toFixed(2)} | S:${coords[2].toFixed(2)}`;
             } else {
                 document.getElementById('coordBadge').classList.add('hidden');
             }

@@ -1,7 +1,8 @@
 import os
+from math import isfinite
 from pathlib import Path
 from time import perf_counter
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -20,9 +21,14 @@ app = FastAPI(
 
 # 初始化 Groq 客戶端
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-client = Groq(api_key=GROQ_API_KEY)
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # 依清單順序呼叫 Groq 模型，並記錄每次呼叫耗時。
 def generate_groq_response(messages, temperature=0.7, max_tokens=1200, is_json=False, fallback=None):
+    if client is None:
+        if fallback is not None:
+            return fallback
+        raise RuntimeError("Render 尚未設定 GROQ_API_KEY。")
+
     # 根據你的 test_groq.py 實際授權清單進行自動備援排序
     candidate_models = [
         "openai/gpt-oss-20b",
@@ -230,29 +236,33 @@ def analyze_sentiment(payload: SentimentRequest):
             "status": "error",
             "message": f"呼叫文字大腦失敗了，原因：{str(e)}"
         }
-# 保留原有影像模式的情緒座標對照。
-IMAGE_EMOTION_COORDS = {
-    "happy": [0.81, 0.51, 0.46],
-    "sad": [-0.63, -0.27, -0.33],
-    "angry": [-0.51, 0.59, 0.25],
-    "surprise": [0.4, 0.67, -0.13],
-    "fear": [-0.64, 0.6, -0.43],
-    "disgust": [-0.6, 0.35, 0.11],
-    "neutral": [0.0, 0.0, 0.0],
-}
+def apply_image_scores(tracker, scores):
+    # YOLO 分數不是情緒強度。未確定的部分放在 neutral，
+    # 讓低分的辨識結果更靠近情緒空間中心。
+    if not scores or any(
+        emotion not in tracker.counts or not isfinite(score) or not 0 <= score <= 1
+        for emotion, score in scores.items()
+    ):
+        raise ValueError("影像表情分數格式錯誤。")
 
+    strongest_emotion = max(scores, key=scores.get)
+    strongest_score = scores[strongest_emotion]
+    if strongest_score <= 0.25:
+        raise ValueError("影像辨識分數未達門檻，請重新拍照。")
 
-def get_image_coordinates(tracker, emotion):
-    if hasattr(tracker, "emotion_dict"):
-        return tracker.emotion_dict.get(emotion, [0.0, 0.0, 0.0])
-    if hasattr(tracker, "get_coordinates"):
-        return tracker.get_coordinates(emotion)
-    return IMAGE_EMOTION_COORDS.get(emotion, [0.0, 0.0, 0.0])
+    total = sum(scores.values())
+    tracker.counts.update({
+        emotion: score / total * strongest_score
+        for emotion, score in scores.items()
+    })
+    tracker.counts["neutral"] += 1 - strongest_score
+    return strongest_emotion
 
 
 class CoordRecommendationRequest(BaseModel):
     coordinates: Optional[List[float]] = None
-    detected_emotion: str
+    detected_emotion: Optional[str] = None
+    emotion_scores: Optional[Dict[str, float]] = None
     allergens: Optional[List[str]] = []     # 新增：過敏原列表
     preferences: Optional[List[str]] = []   # 新增：口味偏好列表
 
@@ -260,22 +270,25 @@ class CoordRecommendationRequest(BaseModel):
 def recommend_dessert_from_coord(request: CoordRecommendationRequest):
     try:
         tracker = EmotionSpaceTracker()
-        tracker.reset_space()
-        emotion = request.detected_emotion.strip().lower()
-        if emotion not in tracker.counts and emotion not in IMAGE_EMOTION_COORDS:
-            return {"status": "error", "message": f"未設定的情緒類別：{emotion}"}
+        if request.emotion_scores is not None:
+            emotion = apply_image_scores(tracker, request.emotion_scores)
+            coords = tracker.calculate_user_coordinate().tolist()
+        else:
+            # 舊版呼叫端仍可傳單一類別或類別加座標。
+            emotion = (request.detected_emotion or "").strip().lower()
+            if emotion not in tracker.counts:
+                return {"status": "error", "message": f"未設定的情緒類別：{emotion}"}
 
-        coords = request.coordinates
-        if coords is None:
-            coords = get_image_coordinates(tracker, emotion)
-        if len(coords) != 3:
-            return {"status": "error", "message": "情緒座標必須有三個數值"}
-
-        if emotion in tracker.counts:
             tracker.counts[emotion] = 1
+            coords = request.coordinates
+            if coords is None:
+                coords = tracker.calculate_user_coordinate().tolist()
+            if len(coords) != 3 or not all(isfinite(value) for value in coords):
+                return {"status": "error", "message": "情緒座標必須有三個有效數值。"}
 
-        # k 為 3，撈出 3D 空間中距離目前情緒重心最近的前三名甜點
+        # 推薦與顯示使用同一組座標。
         matched_desserts = tracker.get_top_k_recommendations(
+            user_vector=coords,
             user_allergens=request.allergens,
             user_preferences=request.preferences,
             k=3
