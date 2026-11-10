@@ -680,19 +680,14 @@
                 throw new Error(`無法讀取 YOLO 模型輸出（${dims.join(' × ')}）。`);
             }
 
-            let bestClass = -1;
-            let bestScore = 0.25;
+            const scores = labels.map(() => 0);
             if (rows === labels.length + 4) {
                 // 原始 YOLO Detect 輸出 [1, 4 + 類別數, 候選框數]。
-                // 只取分數最高的類別，因此不需要為重疊框排序或做 NMS。
                 for (let classId = 0; classId < labels.length; classId++) {
                     const offset = (classId + 4) * columns;
                     for (let box = 0; box < columns; box++) {
                         const score = data[offset + box];
-                        if (score > bestScore) {
-                            bestScore = score;
-                            bestClass = classId;
-                        }
+                        if (score > scores[classId]) scores[classId] = score;
                     }
                 }
             } else if (columns === 6) {
@@ -700,15 +695,19 @@
                 for (let box = 0; box < rows; box++) {
                     const score = data[box * 6 + 4];
                     const classId = data[box * 6 + 5];
-                    if (score > bestScore && Number.isInteger(classId) && classId >= 0 && classId < labels.length) {
-                        bestScore = score;
-                        bestClass = classId;
+                    if (Number.isInteger(classId) && classId >= 0 && classId < labels.length && score > scores[classId]) {
+                        scores[classId] = score;
                     }
                 }
             } else {
                 throw new Error(`模型輸出（${dims.join(' × ')}）與類別檔不符。請用專案的 PowerShell 指令重新匯出模型。`);
             }
-            return bestClass < 0 ? 'neutral' : labels[bestClass].trim().toLowerCase();
+            const ranked = labels.map((label, index) => ({
+                label: label.trim().toLowerCase(),
+                score: scores[index],
+            })).sort((left, right) => right.score - left.score);
+            console.table(ranked.map(({label, score}) => ({label, score: score.toFixed(3)})));
+            return ranked[0].score > 0.25 ? ranked[0] : null;
         }
 
         async function analyzeImageEmotion() {
@@ -728,23 +727,24 @@
                 const startedAt = performance.now();
                 const input = createModelInput();
                 let outputs;
-                let detectedEmotion;
+                let detection;
                 try {
                     outputs = await session.run({[session.inputNames[0]]: input});
-                    detectedEmotion = pickEmotion(outputs[session.outputNames[0]], labels);
+                    detection = pickEmotion(outputs[session.outputNames[0]], labels);
                 } finally {
                     input.dispose();
                     if (outputs) Object.values(outputs).forEach(tensor => tensor.dispose());
                 }
                 console.info(`[計時] 瀏覽器 ONNX 推論 ${Math.round(performance.now() - startedAt)} ms`);
                 if (selection !== photoSelection) return;
+                if (!detection) throw new Error('辨識分數未達門檻，請在光線充足時讓臉部靠近鏡頭再拍一次。');
 
                 updateInlineText("正在生成甜點推薦...");
                 const recommendationStartedAt = performance.now();
                 const response = await fetch('/api/recommend-dessert-from-coord', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({detected_emotion: detectedEmotion, allergens, preferences}),
+                    body: JSON.stringify({detected_emotion: detection.label, allergens, preferences}),
                 });
                 if (!response.ok) throw new Error(`推薦服務連線失敗（HTTP ${response.status}）。`);
                 const data = await response.json();
@@ -754,7 +754,7 @@
 
                 renderAIResult({
                     dialogue: data.warm_recommendation,
-                    emotionLabel: data.detected_emotion,
+                    emotionLabel: `${data.detected_emotion} · 模型分數 ${(detection.score * 100).toFixed(0)}%`,
                     coords: data.coord_list,
                     dessertName: data.dessert_list?.[0] || "無合適甜點",
                     top3List: data.dessert_list || [],

@@ -22,7 +22,7 @@ app = FastAPI(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 client = Groq(api_key=GROQ_API_KEY)
 # 依清單順序呼叫 Groq 模型，並記錄每次呼叫耗時。
-def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=False):
+def generate_groq_response(messages, temperature=0.7, max_tokens=1200, is_json=False, fallback=None):
     # 根據你的 test_groq.py 實際授權清單進行自動備援排序
     candidate_models = [
         "openai/gpt-oss-20b",
@@ -38,17 +38,31 @@ def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=Fa
                 "model": model_name,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,
                 "timeout": 4.0  # ✅ 設定 4 秒強刷 Timeout，防止 API 卡死
             }
+            if model_name.startswith("openai/gpt-oss-"):
+                kwargs["reasoning_effort"] = "low"
+            elif model_name == "qwen/qwen3.8-27b":
+                kwargs["reasoning_effort"] = "none"
             if is_json:
                 kwargs["response_format"] = {"type": "json_object"}
                 
             completion = client.chat.completions.create(**kwargs)
-            res_text = completion.choices[0].message.content.strip()
-            if res_text:
-                print(f"✅ 成功使用模型 [{model_name}] 生成對話內容！")
-                return res_text
+            choice = completion.choices[0]
+            res_text = (choice.message.content or "").strip()
+            if choice.finish_reason != "stop" or not res_text:
+                last_error = f"回覆未完整結束（{choice.finish_reason}）"
+                print(f"⚠️ [{model_name}] {last_error}")
+                continue
+            if not is_json and (
+                not res_text.endswith(("。", "！", "？", "。」", "！」", "？」", ".", "!", "?"))
+                or res_text.count("【") != res_text.count("】")
+            ):
+                last_error = "回覆缺少完整句尾或甜點名稱"
+                print(f"⚠️ [{model_name}] {last_error}")
+                continue
+            return res_text
         except Exception as e:
             last_error = str(e)
             print(f"⚠️ 模型 [{model_name}] 呼叫失敗，原因: {last_error}")
@@ -57,9 +71,17 @@ def generate_groq_response(messages, temperature=0.7, max_tokens=600, is_json=Fa
             print(f"[計時] Groq {model_name} {(perf_counter() - started_at) * 1000:.0f} ms")
 
     print(f"❌ 所有模型皆呼叫失敗，最後錯誤: {last_error}")
-    # 若全都失敗，回傳提示而非空白，避免前端顯示預設備援文字
-    return f"【AI 甜點顧問正在閉關調配處方】目前 Groq 服務繁忙（{last_error}），但已為您比對出空間幾何最佳解！"
-    
+    if fallback is not None:
+        return fallback
+    raise RuntimeError("情緒分析服務目前未能完成回覆，請稍後重試。")
+
+
+def fallback_dessert_dialogue(desserts):
+    if not desserts:
+        return "目前沒有符合你所選條件的甜點。你可以查看口味偏好設定，再試一次。"
+    names = "、".join(f"【{name}】" for name in desserts)
+    return f"依照你的設定，這次為你挑出{names}。如果想先試一款，可以從【{desserts[0]}】開始，留一點時間慢慢品嚐。"
+
 
 # 沿用原專案的資料夾配置，templates 與 static 都在專案根目錄。
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -172,7 +194,7 @@ def analyze_sentiment(payload: SentimentRequest):
 依推薦順序排列的甜點為：{dessert_text_for_prompt or "無合適甜點"}。
 
 請用台灣繁體中文直接寫約 120～160 字的溫暖對話。先回應使用者的具體情境，再用風味或口感解釋第一名為何適合，簡短提及清單裡其餘選項，並給一個品嚐方式。
-只推薦清單內的甜點，名稱用【】標示。清單為空時，直接說明沒有符合條件的推薦。
+只推薦清單內的甜點，名稱用【】標示，並用完整句子結尾。清單為空時，直接說明沒有符合條件的推薦。
 """
         ai_reply = generate_groq_response(
             messages=[
@@ -180,7 +202,7 @@ def analyze_sentiment(payload: SentimentRequest):
                 {"role": "user", "content": text_generation_prompt}
             ],
             temperature=0.7,
-            max_tokens=600
+            fallback=fallback_dessert_dialogue(matched_desserts)
         )
         #ai_reply = completion.choices[0].message.content.strip()
         
@@ -267,7 +289,7 @@ def recommend_dessert_from_coord(request: CoordRecommendationRequest):
 依推薦順序排列的甜點為：{dessert_text_for_prompt or "無合適甜點"}。
 
 請用台灣繁體中文直接寫約 120～160 字的溫暖對話。以「如果你今天覺得……」的方式回應可能的心情，再用風味或口感解釋第一名為何適合，簡短提及清單裡其餘選項，並給一個品嚐方式。
-只推薦清單內的甜點，名稱用【】標示。清單為空時，直接說明沒有符合條件的推薦。
+只推薦清單內的甜點，名稱用【】標示，並用完整句子結尾。清單為空時，直接說明沒有符合條件的推薦。
 """
 
         # 呼叫 Groq 大腦
@@ -277,7 +299,7 @@ def recommend_dessert_from_coord(request: CoordRecommendationRequest):
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=600
+            fallback=fallback_dessert_dialogue(matched_desserts)
         )
         
         #warm_text = completion.choices[0].message.content.strip()
