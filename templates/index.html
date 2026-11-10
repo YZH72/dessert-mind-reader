@@ -8,8 +8,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght=300;400;500;700;900&display=swap" rel="stylesheet">
-    <!-- ONNX Runtime Web (用於前端極速推論) -->
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -248,7 +246,7 @@
                                 <p class="text-xs text-slate-400">即時攝影機自拍，AI 解析你的神情</p>
                             </div>
                         </div>
-                        <span class="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100">ONNX 邊緣視覺辨識</span>
+                        <span class="text-[10px] font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-600 border border-amber-100">YOLO 視覺辨識</span>
                     </div>
 
                     <div class="relative w-full aspect-video bg-slate-900/90 rounded-2xl overflow-hidden mb-4 shadow-inner border border-white/80 flex items-center justify-center">
@@ -272,8 +270,8 @@
 
                     <div class="text-center py-2 border-t border-rose-100/60 mt-2">
                         <label for="imageFile" class="text-xs text-rose-500 font-bold cursor-pointer hover:text-rose-600 transition flex items-center justify-center space-x-1.5">
-                            <i class="fa-solid fa-cloud-arrow-up"></i>
-                            <span>或上傳現有照片（JPG/PNG）</span>
+                            <i class="fa-solid fa-image"></i>
+                            <span>或選擇現有照片（JPG/PNG）</span>
                         </label>
                         <input type="file" id="imageFile" accept="image/*" class="hidden" onchange="previewUploadedImage(this)">
                     </div>
@@ -312,7 +310,7 @@
                             
                             <div class="text-center px-4">
                                 <p id="inlineLoadingText" class="text-xs font-bold text-slate-700 mb-1">
-                                    正在進行 ONNX 前端視覺與 3D 空間計算...
+                                    正在進行 YOLO 影像與 3D 空間計算...
                                 </p>
                                 <p class="text-[10px] text-slate-400">專屬甜點幾何向量匹配中</p>
                             </div>
@@ -369,24 +367,12 @@
     </div>
 
 
-    <!-- JavaScript 完整邏輯 (整合 ONNX 前端極速辨識 + 100% 保留註解與功能) -->
+    <!-- JavaScript 完整邏輯 (保持 100% 原始 API 連線邏輯) -->
     <script>
         // ==========================================
         // 🚀 加載動畫與進度條控制邏輯
         // ==========================================
         let inlineInterval = null;
-        let onnxSession = null;
-
-        // 初始化 ONNX 模型 (網頁載入時背景準備)
-        async function initONNX() {
-            try {
-                onnxSession = await ort.InferenceSession.create('/static/best.onnx');
-                console.log("✅ ONNX 前端視覺模型已成功載入！");
-            } catch (e) {
-                console.warn("⚠️ ONNX 載入中，拍照時將自動完成初始化。", e);
-            }
-        }
-        window.addEventListener('load', initONNX);
 
         // 🚀 控制右側卡片內部的 Loading 狀態與進度條
         function showInlineLoading(text = "正在進行 3D 空間與情感分析...") {
@@ -415,14 +401,11 @@
 
         function hideInlineLoading() {
             if (inlineInterval) clearInterval(inlineInterval);
-            const bar = document.getElementById('inlineProgressBar');
-            bar.style.width = '100%';
-
-            setTimeout(() => {
-                document.getElementById('inlineLoadingStatus').classList.add('hidden');
-                document.getElementById('reportContent').classList.remove('hidden');
-                bar.style.width = '0%';
-            }, 250);
+            document.getElementById('inlineLoadingStatus').classList.add('hidden');
+            document.getElementById('inlineProgressBar').style.width = '0%';
+            if (document.getElementById('reportContent').classList.contains('hidden')) {
+                document.getElementById('placeholderStatus').classList.remove('hidden');
+            }
         }
 
         // ==========================================
@@ -435,7 +418,14 @@
         const btnRetakePhoto = document.getElementById('btnRetakePhoto');
         const btnStartCamera = document.getElementById('btnStartCamera');
         const btnImageSubmit = document.getElementById('btnImageSubmit');
-        let currentPhotoBlob = null;
+        let photoSelection = 0;
+
+        function drawPhotoPreview(source, width, height) {
+            const scale = Math.min(1, 480 / Math.max(width, height));
+            photoPreview.width = Math.max(1, Math.round(width * scale));
+            photoPreview.height = Math.max(1, Math.round(height * scale));
+            photoPreview.getContext('2d').drawImage(source, 0, 0, photoPreview.width, photoPreview.height);
+        }
 
         // 停止相機串流的輔助函式
         function stopCameraStream() {
@@ -447,11 +437,17 @@
 
         // 開啟攝影機
         async function startCamera() {
+            const selection = ++photoSelection;
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { aspect_ratio: 4/3, facingMode: "user" }, 
                     audio: false 
                 });
+                if (selection !== photoSelection) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+                stopCameraStream();
                 cameraStream.srcObject = stream;
                 btnStartCamera.classList.add('hidden');
                 cameraStream.classList.remove('hidden');
@@ -460,7 +456,8 @@
                 btnRetakePhoto.classList.add('hidden');
                 btnTakePhoto.classList.remove('hidden');
                 btnImageSubmit.disabled = true;
-                currentPhotoBlob = null;
+                document.getElementById('imageFile').value = '';
+                prepareBrowserModel();
             } catch (e) { 
                 alert("無法開啟攝影機，請確認設備連結或權限設定。"); 
             }
@@ -468,21 +465,21 @@
 
         // 📸 拍照
         function takePhoto() {
-            const canvas = document.getElementById('photoPreview');
-            const context = canvas.getContext('2d');
-            canvas.width = cameraStream.videoWidth;
-            canvas.height = cameraStream.videoHeight;
-            context.drawImage(cameraStream, 0, 0, canvas.width, canvas.height);
-            
+            const { videoWidth, videoHeight } = cameraStream;
+            if (!videoWidth || !videoHeight) {
+                alert("相機還在準備，畫面出現後請再拍一次。");
+                return;
+            }
+
+            ++photoSelection;
+            drawPhotoPreview(cameraStream, videoWidth, videoHeight);
+
             cameraStream.classList.add('hidden');
             photoPreview.classList.remove('hidden');
             btnTakePhoto.classList.add('hidden');
             btnRetakePhoto.classList.remove('hidden');
             
-            canvas.toBlob((blob) => {
-                currentPhotoBlob = blob;
-                btnImageSubmit.disabled = false;
-            }, 'image/jpeg');
+            btnImageSubmit.disabled = imageAnalysisInProgress;
 
             // 拍照完成後關閉攝影機串流省電
             stopCameraStream();
@@ -491,34 +488,37 @@
         // 📸 重拍
         function retakePhoto() {
             startCamera();
-            document.getElementById('imageFile').value = '';
         }
 
         // 預覽上傳的照片
         function previewUploadedImage(input) {
-            if (input.files && input.files[0]) {
-                stopCameraStream();
-                btnStartCamera.classList.add('hidden');
-                cameraStream.classList.add('hidden');
-                cameraControls.classList.add('hidden');
+            const file = input.files[0];
+            if (!file) return;
 
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = new Image();
-                    img.onload = function() {
-                        const canvas = document.getElementById('photoPreview');
-                        const context = canvas.getContext('2d');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        context.drawImage(img, 0, 0);
-                        canvas.classList.remove('hidden');
-                        btnImageSubmit.disabled = false;
-                    }
-                    img.src = e.target.result;
-                }
-                reader.readAsDataURL(input.files[0]);
-                currentPhotoBlob = null; 
-            }
+            const selection = ++photoSelection;
+            btnImageSubmit.disabled = true;
+            stopCameraStream();
+            btnStartCamera.classList.add('hidden');
+            cameraStream.classList.add('hidden');
+            cameraControls.classList.add('hidden');
+            photoPreview.classList.add('hidden');
+
+            const image = new Image();
+            const objectUrl = URL.createObjectURL(file);
+            image.onload = () => {
+                URL.revokeObjectURL(objectUrl);
+                if (selection !== photoSelection) return;
+                drawPhotoPreview(image, image.naturalWidth, image.naturalHeight);
+                photoPreview.classList.remove('hidden');
+
+                btnImageSubmit.disabled = imageAnalysisInProgress;
+                prepareBrowserModel();
+            };
+            image.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                if (selection === photoSelection) alert("瀏覽器無法讀取這張圖，請換一張 JPG 或 PNG。");
+            };
+            image.src = objectUrl;
         }
 
         // 取得使用者勾選的偏好與過敏原設定
@@ -528,7 +528,7 @@
             return { allergens, preferences };
         }
 
-        // 渠道一：純文字分析 (整合 Loading 動畫)
+        // 渠道一：純文字分析(整合 Loading 動畫)
         async function analyzeTextSentiment() {
             const userText = document.getElementById('userInput').value.trim();
             if (!userText) return alert("請先寫下你的內心話。");
@@ -541,6 +541,7 @@
             const { allergens, preferences } = getUserDietarySettings();
 
             try {
+                const requestStartedAt = performance.now();
                 const response = await fetch('/api/analyze-sentiment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -552,6 +553,7 @@
                     })
                 });
                 const data = await response.json();
+                console.info(`[計時] 文字分析 API ${Math.round(performance.now() - requestStartedAt)} ms`);
                 if (data.status === 'success') {
                     let dessertMatch = data.warm_dialogue ? data.warm_dialogue.match(/【(.*?)】/) : null;
                     let finalDessertName = dessertMatch ? dessertMatch[1] : (data.dessert_list ? data.dessert_list[0] : "客製化療癒甜點");
@@ -568,85 +570,201 @@
                 }
             } catch (e) { 
                 alert("連線錯誤，請確認後端服務是否正常運作。"); 
-            } finally { 
+            } finally {
                 hideInlineLoading();
                 btn.disabled = false; 
                 btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> 傳送心聲給顧問`; 
             }
         }
 
-        // 渠道二：影像表情辨識 + 3D 座標推薦 (ONNX 瀏覽器極速辨識 + 整合 Loading 動畫)
-        async function analyzeImageEmotion() {
-            const btn = document.getElementById('btnImageSubmit');
-            btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> 影像分析與座標映射...`;
-            
-            showInlineLoading("正在使用 ONNX Web 進行極速臉部辨識...");
+        const ortDist = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+        const modelSize = 320; // 必須和 PowerShell 匯出指令的 imgsz 一致。
+        let runtimePromise = null;
+        let browserModelPromise = null;
+        let imageAnalysisInProgress = false;
 
-            let formData = new FormData();
-            if (currentPhotoBlob) {
-                formData.append("file", currentPhotoBlob, "selfie.jpeg");
-            } else {
-                const fileInput = document.getElementById('imageFile');
-                if(!fileInput.files[0]) { 
-                    alert("請先選擇照片或拍攝自拍！"); 
-                    btn.disabled = false; 
-                    hideInlineLoading();
-                    return; 
+        function loadOnnxRuntime() {
+            if (runtimePromise) return runtimePromise;
+
+            runtimePromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = ortDist + 'ort.webgpu.min.js';
+                script.onload = resolve;
+                script.onerror = () => {
+                    script.remove();
+                    reject(new Error('無法載入 ONNX Runtime，請確認網路後重試。'));
+                };
+                document.head.appendChild(script);
+            }).catch(error => {
+                runtimePromise = null;
+                throw error;
+            });
+            return runtimePromise;
+        }
+
+        async function initializeBrowserModel() {
+            const startedAt = performance.now();
+            const labelsPromise = fetch('/static/model-labels.json').then(async response => {
+                if (!response.ok) throw new Error('找不到 static/model-labels.json，請先產生類別對照檔。');
+                const labels = await response.json();
+                if (!Array.isArray(labels) || !labels.length || labels.some(label => typeof label !== 'string' || !label.trim())) {
+                    throw new Error('model-labels.json 的類別對照格式有誤。');
                 }
-                formData.append("file", fileInput.files[0]);
-            }
-            
-            try {
-                // 第一階段：將照片傳給後端進行 YOLO 動態辨識與 3D 空間映射
-                const imgAnalysisResponse = await fetch('/api/analyze-emotion-image', { method: 'POST', body: formData });
-                const imgData = await imgAnalysisResponse.json();
-                
-                if (imgData.status === 'success') {
-                    const coords = imgData.coord_list; 
-                    const detectedEmotion = imgData.detected_emotion;
+                return labels;
+            });
+            const [labels] = await Promise.all([labelsPromise, loadOnnxRuntime()]);
+            ort.env.wasm.wasmPaths = ortDist;
+            ort.env.wasm.numThreads = 1;
 
-                    updateInlineText(`偵測到表情：【${detectedEmotion}】，正在召喚 AI 甜點顧問...`);
-                    btn.innerHTML = `<i class="fa-solid fa-brain animate-spin"></i> AI 顧問生成處方...`;
-                    
-                    const { allergens, preferences } = getUserDietarySettings();
-
-                    // 第二階段：將真實辨識出的座標傳給後端生成推薦甜點與對話
-                    const recommendationResponse = await fetch('/api/recommend-dessert-from-coord', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            coordinates: coords, 
-                            detected_emotion: detectedEmotion,
-                            allergens: allergens,
-                            preferences: preferences
-                        })
+            let provider = 'wasm';
+            let session;
+            if (navigator.gpu) {
+                try {
+                    session = await ort.InferenceSession.create('/static/best.onnx', {
+                        executionProviders: ['webgpu', 'wasm'],
                     });
-                    const recommendData = await recommendationResponse.json();
-                    
-                    if (recommendData.status === 'success') {
-                        let dessertMatch = recommendData.warm_recommendation ? recommendData.warm_recommendation.match(/【(.*?)】/) : null;
-                        let finalDessertName = dessertMatch ? dessertMatch[1] : "客製化療癒甜點";
-
-                        renderAIResult({ 
-                            dialogue: recommendData.warm_recommendation, 
-                            emotionLabel: detectedEmotion, 
-                            coords: coords,
-                            dessertName: finalDessertName,
-                            top3List: recommendData.dessert_list || []
-                        });
-                    } else { 
-                        alert("AI 生成推薦失敗：" + recommendData.message); 
-                    }
-                } else { 
-                    alert("影像分析失敗：" + imgData.message); 
+                    provider = 'webgpu';
+                } catch (error) {
+                    console.warn('WebGPU 初始化失敗，改用 WASM。', error);
                 }
-            } catch (e) { 
-                alert("連線錯誤：" + e.message); 
+            }
+            if (!session) {
+                session = await ort.InferenceSession.create('/static/best.onnx', {
+                    executionProviders: ['wasm'],
+                });
+            }
+            console.info(`[計時] ONNX 模型準備 ${Math.round(performance.now() - startedAt)} ms（${provider}）`);
+            return {session, labels};
+        }
+
+        function getBrowserModel() {
+            if (!browserModelPromise) {
+                browserModelPromise = initializeBrowserModel().catch(error => {
+                    browserModelPromise = null;
+                    throw error;
+                });
+            }
+            return browserModelPromise;
+        }
+
+        function prepareBrowserModel() {
+            getBrowserModel().catch(error => console.warn('ONNX 模型預載失敗。', error));
+        }
+
+        function createModelInput() {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = modelSize;
+            const context = canvas.getContext('2d');
+            const scale = Math.min(modelSize / photoPreview.width, modelSize / photoPreview.height);
+            const width = Math.round(photoPreview.width * scale);
+            const height = Math.round(photoPreview.height * scale);
+            context.fillStyle = '#727272';
+            context.fillRect(0, 0, modelSize, modelSize);
+            context.drawImage(photoPreview, Math.floor((modelSize - width) / 2), Math.floor((modelSize - height) / 2), width, height);
+
+            const pixels = context.getImageData(0, 0, modelSize, modelSize).data;
+            const plane = modelSize * modelSize;
+            const values = new Float32Array(3 * plane);
+            for (let i = 0; i < plane; i++) {
+                values[i] = pixels[4 * i] / 255;
+                values[plane + i] = pixels[4 * i + 1] / 255;
+                values[2 * plane + i] = pixels[4 * i + 2] / 255;
+            }
+            return new ort.Tensor('float32', values, [1, 3, modelSize, modelSize]);
+        }
+
+        function pickEmotion(output, labels) {
+            const {dims, data} = output;
+            const [, rows, columns] = dims;
+            if (dims.length !== 3 || dims[0] !== 1) {
+                throw new Error(`無法讀取 YOLO 模型輸出（${dims.join(' × ')}）。`);
+            }
+
+            let bestClass = -1;
+            let bestScore = 0.25;
+            if (rows === labels.length + 4) {
+                // 原始 YOLO Detect 輸出 [1, 4 + 類別數, 候選框數]。
+                // 只取分數最高的類別，因此不需要為重疊框排序或做 NMS。
+                for (let classId = 0; classId < labels.length; classId++) {
+                    const offset = (classId + 4) * columns;
+                    for (let box = 0; box < columns; box++) {
+                        const score = data[offset + box];
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestClass = classId;
+                        }
+                    }
+                }
+            } else if (columns === 6) {
+                // 已後處理的 Detect 輸出 [1, 候選框數, 6]。
+                for (let box = 0; box < rows; box++) {
+                    const score = data[box * 6 + 4];
+                    const classId = data[box * 6 + 5];
+                    if (score > bestScore && Number.isInteger(classId) && classId >= 0 && classId < labels.length) {
+                        bestScore = score;
+                        bestClass = classId;
+                    }
+                }
+            } else {
+                throw new Error(`模型輸出（${dims.join(' × ')}）與類別檔不符。請用專案的 PowerShell 指令重新匯出模型。`);
+            }
+            return bestClass < 0 ? 'neutral' : labels[bestClass].trim().toLowerCase();
+        }
+
+        async function analyzeImageEmotion() {
+            if (imageAnalysisInProgress || photoPreview.classList.contains('hidden')) return;
+
+            const selection = photoSelection;
+            const {allergens, preferences} = getUserDietarySettings();
+            imageAnalysisInProgress = true;
+            btnImageSubmit.disabled = true;
+            showInlineLoading("正在準備瀏覽器的 ONNX 模型...");
+
+            try {
+                const {session, labels} = await getBrowserModel();
+                if (selection !== photoSelection) return;
+
+                updateInlineText("正在裝置上辨識照片...");
+                const startedAt = performance.now();
+                const input = createModelInput();
+                let outputs;
+                let detectedEmotion;
+                try {
+                    outputs = await session.run({[session.inputNames[0]]: input});
+                    detectedEmotion = pickEmotion(outputs[session.outputNames[0]], labels);
+                } finally {
+                    input.dispose();
+                    if (outputs) Object.values(outputs).forEach(tensor => tensor.dispose());
+                }
+                console.info(`[計時] 瀏覽器 ONNX 推論 ${Math.round(performance.now() - startedAt)} ms`);
+                if (selection !== photoSelection) return;
+
+                updateInlineText("正在生成甜點推薦...");
+                const recommendationStartedAt = performance.now();
+                const response = await fetch('/api/recommend-dessert-from-coord', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({detected_emotion: detectedEmotion, allergens, preferences}),
+                });
+                if (!response.ok) throw new Error(`推薦服務連線失敗（HTTP ${response.status}）。`);
+                const data = await response.json();
+                console.info(`[計時] 甜點推薦 API ${Math.round(performance.now() - recommendationStartedAt)} ms`);
+                if (selection !== photoSelection) return;
+                if (data.status !== 'success') throw new Error(data.message || '推薦服務發生錯誤。');
+
+                renderAIResult({
+                    dialogue: data.warm_recommendation,
+                    emotionLabel: data.detected_emotion,
+                    coords: data.coord_list,
+                    dessertName: data.dessert_list?.[0] || "無合適甜點",
+                    top3List: data.dessert_list || [],
+                });
+            } catch (error) {
+                if (selection === photoSelection) alert("影像推薦失敗：" + error.message);
             } finally {
+                imageAnalysisInProgress = false;
+                btnImageSubmit.disabled = photoPreview.classList.contains('hidden');
                 hideInlineLoading();
-                btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-eye"></i> 啟動影像 AI 推薦`;
             }
         }
 
