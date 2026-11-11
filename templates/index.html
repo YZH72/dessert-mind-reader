@@ -419,6 +419,7 @@
         const btnStartCamera = document.getElementById('btnStartCamera');
         const btnImageSubmit = document.getElementById('btnImageSubmit');
         let photoSelection = 0;
+        let originalPhoto = null;
 
         function drawPhotoPreview(source, width, height) {
             const scale = Math.min(1, 480 / Math.max(width, height));
@@ -472,7 +473,12 @@
             }
 
             ++photoSelection;
-            drawPhotoPreview(cameraStream, videoWidth, videoHeight);
+            const snapshot = document.createElement('canvas');
+            snapshot.width = videoWidth;
+            snapshot.height = videoHeight;
+            snapshot.getContext('2d').drawImage(cameraStream, 0, 0);
+            originalPhoto = snapshot;
+            drawPhotoPreview(snapshot, videoWidth, videoHeight);
 
             cameraStream.classList.add('hidden');
             photoPreview.classList.remove('hidden');
@@ -508,6 +514,7 @@
             image.onload = () => {
                 URL.revokeObjectURL(objectUrl);
                 if (selection !== photoSelection) return;
+                originalPhoto = image;
                 drawPhotoPreview(image, image.naturalWidth, image.naturalHeight);
                 photoPreview.classList.remove('hidden');
 
@@ -651,17 +658,63 @@
             getBrowserModel().catch(error => console.warn('ONNX 模型預載失敗。', error));
         }
 
-        function createModelInput() {
+        const faceRuntimeUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21';
+        let faceDetectorPromise;
+
+        function getFaceDetector() {
+            if (!faceDetectorPromise) {
+                const startedAt = performance.now();
+                faceDetectorPromise = (async () => {
+                    const { FaceDetector, FilesetResolver } = await import(faceRuntimeUrl + '/vision_bundle.mjs');
+                    const runtime = await FilesetResolver.forVisionTasks(faceRuntimeUrl + '/wasm');
+                    const detector = await FaceDetector.createFromOptions(runtime, {
+                        baseOptions: {
+                            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+                            delegate: 'CPU',
+                        },
+                        runningMode: 'IMAGE',
+                        minDetectionConfidence: 0.5,
+                    });
+                    console.info(`[計時] 人臉模型準備 ${Math.round(performance.now() - startedAt)} ms`);
+                    return detector;
+                })().catch(error => {
+                    faceDetectorPromise = undefined;
+                    console.warn('人臉模型初始化失敗', error);
+                    throw new Error('人臉偵測模型載入失敗，請確認網路後再試一次。');
+                });
+            }
+            return faceDetectorPromise;
+        }
+
+        function getFaceCrop(source, detector) {
+            const faces = detector.detect(source).detections;
+            if (!faces.length) throw new Error('找不到人臉，請正面對著鏡頭重拍或選擇另一張照片。');
+            if (faces.length > 1) throw new Error('照片中偵測到多張臉，請選擇單人照片。');
+
+            const { originX, originY, width, height } = faces[0].boundingBox;
+            const sourceWidth = source.naturalWidth || source.width;
+            const sourceHeight = source.naturalHeight || source.height;
+            const left = Math.max(0, Math.floor(originX - width * 0.15));
+            const top = Math.max(0, Math.floor(originY - height * 0.20));
+            const right = Math.min(sourceWidth, Math.ceil(originX + width * 1.15));
+            const bottom = Math.min(sourceHeight, Math.ceil(originY + height * 1.15));
+            return { left, top, width: right - left, height: bottom - top };
+        }
+
+        function createModelInput(source, crop) {
             const canvas = document.createElement('canvas');
             canvas.width = canvas.height = modelSize;
             const context = canvas.getContext('2d');
-            const scale = Math.min(modelSize / photoPreview.width, modelSize / photoPreview.height);
-            const width = Math.round(photoPreview.width * scale);
-            const height = Math.round(photoPreview.height * scale);
+            const scale = Math.min(modelSize / crop.width, modelSize / crop.height);
+            const width = Math.round(crop.width * scale);
+            const height = Math.round(crop.height * scale);
             context.fillStyle = '#727272';
             context.fillRect(0, 0, modelSize, modelSize);
-            context.drawImage(photoPreview, Math.floor((modelSize - width) / 2), Math.floor((modelSize - height) / 2), width, height);
-
+            context.drawImage(
+                source, crop.left, crop.top, crop.width, crop.height,
+                Math.floor((modelSize - width) / 2), Math.floor((modelSize - height) / 2), width, height
+            );
+            
             const pixels = context.getImageData(0, 0, modelSize, modelSize).data;
             const plane = modelSize * modelSize;
             const values = new Float32Array(3 * plane);
@@ -729,21 +782,25 @@
         }
 
         async function analyzeImageEmotion() {
-            if (imageAnalysisInProgress || photoPreview.classList.contains('hidden')) return;
+            if (imageAnalysisInProgress || !originalPhoto || photoPreview.classList.contains('hidden')) return;
 
             const selection = photoSelection;
             const {allergens, preferences} = getUserDietarySettings();
             imageAnalysisInProgress = true;
             btnImageSubmit.disabled = true;
-            showInlineLoading("正在準備瀏覽器的 ONNX 模型...");
+            showInlineLoading("正在準備人臉偵測與表情模型...");
 
             try {
-                const {session, labels} = await getBrowserModel();
+                const [{session, labels}, detector] = await Promise.all([getBrowserModel(), getFaceDetector()]);
                 if (selection !== photoSelection) return;
+
+                updateInlineText("正在定位並裁切臉部...");
+                const cropStartedAt = performance.now();
+                const input = createModelInput(originalPhoto, getFaceCrop(originalPhoto, detector));
+                console.info(`[計時] 人臉偵測、裁切與前處理 ${Math.round(performance.now() - cropStartedAt)} ms`);
 
                 updateInlineText("正在裝置上辨識照片...");
                 const startedAt = performance.now();
-                const input = createModelInput();
                 let outputs;
                 let detection;
                 try {
