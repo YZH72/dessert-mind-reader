@@ -578,7 +578,7 @@
         }
 
         const ortDist = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
-        const modelSize = 320; // 必須和 PowerShell 匯出指令的 imgsz 一致。
+        const modelSize = 480; // 必須和 PowerShell 匯出指令的 imgsz 一致。
         let runtimePromise = null;
         let browserModelPromise = null;
         let imageAnalysisInProgress = false;
@@ -620,7 +620,7 @@
             let session;
             if (navigator.gpu) {
                 try {
-                    session = await ort.InferenceSession.create('/static/best.onnx', {
+                    session = await ort.InferenceSession.create('/static/best-480.onnx', {
                         executionProviders: ['webgpu', 'wasm'],
                     });
                     provider = 'webgpu';
@@ -629,7 +629,7 @@
                 }
             }
             if (!session) {
-                session = await ort.InferenceSession.create('/static/best.onnx', {
+                session = await ort.InferenceSession.create('/static/best-480.onnx', {
                     executionProviders: ['wasm'],
                 });
             }
